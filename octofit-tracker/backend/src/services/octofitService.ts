@@ -78,6 +78,14 @@ export async function createTeam(input: unknown) {
     throw Object.assign(new Error('A team name, mascot, and valid member IDs are required'), { status: 400 });
   }
 
+  const uniqueMemberIds = [...new Set(members)];
+  if (uniqueMemberIds.length > 0) {
+    const existingMembers = await User.countDocuments({ _id: { $in: uniqueMemberIds } });
+    if (existingMembers !== uniqueMemberIds.length) {
+      throw Object.assign(new Error('All team members must be existing users'), { status: 400 });
+    }
+  }
+
   return Team.create({
     name: name.trim(),
     mascot: mascot.trim(),
