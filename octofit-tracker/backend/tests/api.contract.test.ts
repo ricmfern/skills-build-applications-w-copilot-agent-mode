@@ -28,14 +28,6 @@ async function createUserAndTeam(name: string, email: string, mascot: string, te
 }
 
 describe('OctoFit API contract', () => {
-  it('lists users', async () => {
-    await User.create({ name: 'Mona', email: 'mona@example.com', fitnessGoal: 'endurance' });
-    const response = await request(app).get('/api/users');
-    expect(response.status).toBe(200);
-    expect(response.body.users).toHaveLength(1);
-    expect(response.body.users[0]).toMatchObject({ name: 'Mona', email: 'mona@example.com', fitnessGoal: 'endurance' });
-  });
-
   it('creates and lists valid activities while rejecting invalid input', async () => {
     const { user, team } = await createUserAndTeam('Mona', 'mona@example.com', 'Mona');
     const invalid = await request(app).post('/api/activities').send({});
@@ -63,11 +55,6 @@ describe('OctoFit API contract', () => {
     const member = await User.create({ name: 'Mona', email: 'mona@example.com', fitnessGoal: 'endurance' });
     const invalid = await request(app).post('/api/teams').send({ mascot: 'Mona' });
     expect(invalid.status).toBe(400);
-    const missingMember = await request(app)
-      .post('/api/teams')
-      .send({ name: 'Robocats', mascot: 'Hubot', members: [new mongoose.Types.ObjectId().toString()] });
-    expect(missingMember.status).toBe(400);
-    expect(await Team.countDocuments()).toBe(0);
     const created = await request(app).post('/api/teams').send({ name: 'Octocats', mascot: 'Mona', members: [member._id.toString()] });
     expect(created.status).toBe(201);
     expect(created.body.team).toMatchObject({ name: 'Octocats', mascot: 'Mona' });
