@@ -5,6 +5,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function focusForActivityType(type: string) {
+  const normalizedType = type.trim().toLowerCase();
+  if (['run', 'running', 'cycle', 'cycling'].includes(normalizedType)) return 'endurance';
+  return normalizedType;
+}
+
 export async function listUsers() {
   return User.find().lean();
 }
@@ -80,11 +86,54 @@ export async function createTeam(input: unknown) {
 }
 
 export async function getLeaderboard() {
-  return [];
+  const teams = await Team.aggregate<{ teamName: string; totalPoints: number }>([
+    {
+      $lookup: {
+        from: Activity.collection.name,
+        localField: '_id',
+        foreignField: 'team',
+        as: 'activities',
+      },
+    },
+    { $unwind: { path: '$activities', preserveNullAndEmptyArrays: true } },
+    {
+      $group: {
+        _id: '$_id',
+        teamName: { $first: '$name' },
+        totalPoints: { $sum: { $ifNull: ['$activities.points', 0] } },
+      },
+    },
+    { $sort: { totalPoints: -1, teamName: 1 } },
+    { $project: { _id: 0, teamName: 1, totalPoints: 1 } },
+  ]);
+  return teams.map((team, index) => ({ ...team, rank: index + 1 }));
 }
 
-export async function suggestWorkouts(_userEmail: string) {
-  return Workout.find().limit(1).lean();
+export async function suggestWorkouts(userEmail: string) {
+  const user = await User.findOne({ email: userEmail.trim().toLowerCase() }).lean();
+  if (!user) {
+    throw Object.assign(new Error('User not found'), { status: 404 });
+  }
+
+  const recentActivities = await Activity.find({ user: user._id })
+    .sort({ occurredAt: -1, _id: -1 })
+    .limit(5)
+    .lean();
+  const goalFocus = user.fitnessGoal.trim().toLowerCase();
+  let focus = goalFocus;
+  let workouts = await Workout.find({ focus }).sort({ title: 1 }).lean();
+
+  if (workouts.length === 0 && recentActivities.length > 0) {
+    focus = focusForActivityType(recentActivities[0].type);
+    workouts = await Workout.find({ focus }).sort({ title: 1 }).lean();
+  }
+
+  const basedOnRecentActivity = recentActivities.length > 0 &&
+    focusForActivityType(recentActivities[0].type) === focus;
+  const reason = basedOnRecentActivity
+    ? `Recommended based on your recent ${recentActivities[0].type} activity.`
+    : `Recommended to support your ${user.fitnessGoal} fitness goal.`;
+  return workouts.map((workout) => ({ ...workout, reason }));
 }
 
 export { User };
